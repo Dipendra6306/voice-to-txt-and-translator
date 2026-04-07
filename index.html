@@ -5,31 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice Translator Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #transcript { scroll-behavior: smooth; }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
 
-    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
-        <h1 class="text-3xl font-bold mb-6 text-gray-800 text-center">🌍 Audio Translator</h1>
+    <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-lg">
+        <h1 class="text-3xl font-extrabold mb-6 text-slate-800 text-center">🌍 Audio Translator</h1>
         
-        <button id="recordBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 mb-6">
+        <button id="recordBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 mb-6 shadow-lg">
             🎤 Start Speaking
         </button>
 
-        <div class="mb-6 text-left">
-            <h2 class="font-semibold text-gray-700 mb-2">You Said (English):</h2>
-            <div id="transcript" class="p-4 bg-gray-50 border border-gray-200 rounded-lg min-h-[60px] text-gray-600">
+        <div class="mb-6">
+            <h2 class="font-bold text-slate-600 mb-2 uppercase text-xs tracking-widest">Live Transcript (English)</h2>
+            <div id="transcript" class="p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[120px] max-h-[200px] overflow-y-auto text-slate-700 leading-relaxed italic">
                 Waiting for voice...
             </div>
         </div>
 
         <div class="flex gap-4 mb-6">
-            <button onclick="translateText('hi')" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-bold">Hindi</button>
-            <button onclick="translateText('mr')" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-bold">Marathi</button>
+            <button onclick="translateText('hi')" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-colors">Hindi</button>
+            <button onclick="translateText('mr')" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold transition-colors">Marathi</button>
         </div>
 
-        <div class="text-left">
-            <h2 class="font-semibold text-gray-700 mb-2">Translation:</h2>
-            <div id="translation" class="p-4 bg-blue-50 border border-blue-100 rounded-lg min-h-[60px] text-blue-800 font-bold">
+        <div>
+            <h2 class="font-bold text-slate-600 mb-2 uppercase text-xs tracking-widest">Translation</h2>
+            <div id="translation" class="p-5 bg-indigo-50 border border-indigo-100 rounded-xl min-h-[100px] text-indigo-900 font-bold text-lg">
                 ---
             </div>
         </div>
@@ -39,35 +42,50 @@
         let socket;
         let mediaRecorder;
         let isRecording = false;
+        let fullTranscript = ""; // Persistent memory for the frontend
+
         const recordBtn = document.getElementById('recordBtn');
         const transcriptDiv = document.getElementById('transcript');
 
         function initWebSocket() {
             socket = new WebSocket("ws://127.0.0.1:8000/ws/transcribe");
-            socket.onopen = () => console.log("✅ Backend Connected");
+            
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                if (data.text) transcriptDiv.innerText = data.text;
+                if (data.text) {
+                    // Append new text to the persistent transcript
+                    fullTranscript += data.text + " ";
+                    transcriptDiv.innerText = fullTranscript;
+                    // Auto-scroll to keep newest words visible
+                    transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+                }
             };
-            socket.onclose = () => setTimeout(initWebSocket, 2000);
+
+            socket.onclose = () => {
+                console.log("Reconnecting WebSocket...");
+                setTimeout(initWebSocket, 2000);
+            };
         }
 
         async function startRecording() {
             try {
+                fullTranscript = ""; // Reset for new session
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
                         socket.send(event.data);
                     }
                 };
-                mediaRecorder.start(1000);
+
+                mediaRecorder.start(1000); 
                 isRecording = true;
-                recordBtn.innerText = "🛑 Stop Listening";
-                recordBtn.classList.replace('bg-red-500', 'bg-gray-800');
-                transcriptDiv.innerText = "Listening... Speak now.";
+                recordBtn.innerText = "🛑 Stop & Process";
+                recordBtn.classList.replace('bg-red-500', 'bg-slate-800');
+                transcriptDiv.innerText = "Listening... Speak naturally.";
             } catch (err) {
-                alert("Please allow microphone access!");
+                alert("Microphone access is required!");
             }
         }
 
@@ -78,7 +96,7 @@
             }
             isRecording = false;
             recordBtn.innerText = "🎤 Start Speaking";
-            recordBtn.classList.replace('bg-gray-800', 'bg-red-500');
+            recordBtn.classList.replace('bg-slate-800', 'bg-red-500');
         }
 
         recordBtn.addEventListener('click', () => {
@@ -87,13 +105,14 @@
 
         async function translateText(lang) {
             const text = transcriptDiv.innerText;
-            if (text === "Listening..." || text === "Waiting for voice...") return;
+            if (text === "Listening... Speak naturally." || text === "Waiting for voice...") return;
 
             const response = await fetch("http://127.0.0.1:8000/translate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: text, target_lang: lang })
             });
+
             const data = await response.json();
             document.getElementById('translation').innerText = data.translated_text;
         }
