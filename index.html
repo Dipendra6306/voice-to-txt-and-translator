@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Voice to Marathi/Hindi Translator</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 40px; background-color: #f4f7f6; }
+        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: inline-block; min-width: 400px; }
+        #englishOutput { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 8px; margin: 20px 0; min-height: 40px; font-size: 1.1em; }
+        .btn { padding: 12px 25px; margin: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .mic-btn { background: #e74c3c; color: white; width: 100%; }
+        .trans-btn { background: #3498db; color: white; }
+        .btn:hover { opacity: 0.8; }
+        #translatedOutput { color: #27ae60; font-size: 1.6em; margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌍 Audio Translator</h1>
+    <button class="btn mic-btn" id="recordBtn" onclick="startRecording()">🎤 Start Speaking</button>
+    
+    <h3>You Said (English):</h3>
+    <div id="englishOutput">Waiting for voice...</div>
+
+    <button class="btn trans-btn" onclick="translateTo('hi')">Hindi</button>
+    <button class="btn trans-btn" onclick="translateTo('mr')">Marathi</button>
+
+    <h3>Translation:</h3>
+    <div id="translatedOutput"></div>
+</div>
+
+<script>
+    let socket;
+    let audioContext;
+    let silenceTimer;
+
+    async function startRecording() {
+        document.getElementById('englishOutput').innerText = "Listening... speak now.";
+        document.getElementById('recordBtn').innerText = "🔴 Mic is Live";
+        
+        socket = new WebSocket("ws://127.0.0.1:8000/ws/transcribe");
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new AudioContext();
+        const analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        
+        const recorder = new MediaRecorder(stream);
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        recorder.ondataavailable = async (e) => {
+            if (e.data.size > 0 && socket.readyState === 1) {
+                socket.send(await e.data.arrayBuffer());
+            }
+        };
+
+        const checkSilence = () => {
+            analyser.getByteFrequencyData(dataArray);
+            let volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+
+            if (volume > 3) { 
+                clearTimeout(silenceTimer);
+                silenceTimer = setTimeout(() => {
+                    if (recorder.state === "recording") {
+                        recorder.stop();
+                        stream.getTracks().forEach(t => t.stop());
+                        document.getElementById('recordBtn').innerText = "🎤 Start Speaking";
+                        console.log("Stopped due to silence");
+                    }
+                }, 2000); 
+            }
+            if (recorder.state === "recording") requestAnimationFrame(checkSilence);
+        };
+
+        recorder.start();
+        checkSilence();
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if(data.text) document.getElementById('englishOutput').innerText = data.text;
+        };
+    }
+
+    async function translateTo(langCode) {
+        const text = document.getElementById('englishOutput').innerText;
+        if (!text || text.includes("...")) return alert("Please speak first!");
+
+        const translatedDiv = document.getElementById('translatedOutput');
+        translatedDiv.innerText = "Processing...";
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text, target_lang: langCode })
+            });
+            const result = await response.json();
+            translatedDiv.innerText = result.translated_text;
+        } catch (e) {
+            alert("Check if terminal is running!");
+            translatedDiv.innerText = "";
+        }
+    }
+</script>
+
+</body>
+</html>
