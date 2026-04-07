@@ -42,7 +42,7 @@
         let socket;
         let mediaRecorder;
         let isRecording = false;
-        let fullTranscript = ""; // Persistent memory for the frontend
+        let fullTranscript = ""; 
 
         const recordBtn = document.getElementById('recordBtn');
         const transcriptDiv = document.getElementById('transcript');
@@ -53,10 +53,8 @@
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.text) {
-                    // Append new text to the persistent transcript
                     fullTranscript += data.text + " ";
                     transcriptDiv.innerText = fullTranscript;
-                    // Auto-scroll to keep newest words visible
                     transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
                 }
             };
@@ -69,7 +67,7 @@
 
         async function startRecording() {
             try {
-                fullTranscript = ""; // Reset for new session
+                fullTranscript = ""; 
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 

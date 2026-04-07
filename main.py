@@ -10,7 +10,6 @@ from deep_translator import GoogleTranslator
 load_dotenv()
 app = FastAPI()
 
-# Enable CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,7 +18,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Groq
 api_key = os.getenv("GROQ_API_KEY")
 if not api_key:
     raise ValueError("GROQ_API_KEY not found in .env!")
@@ -48,9 +46,6 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_bytes()
             audio_buffer.extend(data)
-            
-            # We wait for a larger chunk (~5-7 seconds of audio) 
-            # to ensure high-quality transcription
             if len(audio_buffer) > 120000: 
                 try:
                     buffer = io.BytesIO(audio_buffer)
@@ -66,7 +61,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         print(f"👂 Heard: {transcription.strip()}")
                         await websocket.send_json({"text": transcription.strip()})
                     
-                    audio_buffer.clear() # Clear backend memory after sending
+                    audio_buffer.clear()
             
                 except Exception:
                     continue 
